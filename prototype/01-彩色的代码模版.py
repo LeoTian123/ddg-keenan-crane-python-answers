@@ -1,71 +1,33 @@
-from laplacian import *
-
-verts, faces = resolve_input('input/kitten.obj')
-
-adj_mat = get_adj_mat(faces)
-
-laplacians = get_laplacians(verts, faces, adj_mat)
-
-scale = np.empty(len(verts), dtype=np.float32)
-
-
-# 1. 先计算面法线，再平均得到顶点法线
-def get_vertex_normals(verts, faces):
-    v_normals = np.zeros_like(verts)
-    for f in faces:
-        v0, v1, v2 = verts[f]
-        # 叉积得到面法线
-        face_normal = np.cross(v1 - v0, v2 - v0)
-        # 累加到三个顶点上（可以按面积加权，这里简化处理）
-        v_normals[f] += face_normal
-
-    # 归一化
-    norms = np.linalg.norm(v_normals, axis=1, keepdims=True)
-    return v_normals / (norms + 1e-9)
-
-
-vertex_normals = get_vertex_normals(verts, faces)
-
-# 2. 判断方向
-for p in range(len(verts)):
-    scale[p] = np.linalg.norm(laplacians[p])
-    # 如果拉普拉斯向量与法线方向相反（点积为负），则设为负值
-    if np.dot(laplacians[p], vertex_normals[p]) < 0:
-        scale[p] *= -1
-
-
-
-
-
-
+from curvature import *
 from OpenGL.GL import *
 from OpenGL.GLUT import *
 from OpenGL.GL.shaders import compileProgram, compileShader
 
+verts, faces = resolve_input('../input/double-torus.obj')
+
+
 # 准备颜色
-scale_abd_max = np.abs(scale).max()
-normed_scale = scale / scale_abd_max
+angle_defects = get_angle_defects(verts, faces)
+scale = np.abs(angle_defects).max()
+n_a_d = angle_defects / scale
 def blue_gray_red(t):
     if t < 0:
         # 蓝 -> 灰
         a = -t
-        # a **= 0.5
         # (a)(0,0,1) + (1-a)(0.5,0.5,0.5)
         return (0.5-0.5*a, 0.5-0.5*a, 0.5+0.5*a)
     else:
         # 灰 -> 红
         # (a)(1,0,0) + (1-a)(0.5,0.5,0.5)
         a = t
-        # a **= 0.5
         return (0.5+0.5*a, 0.5-0.5*a, 0.5-0.5*a)
 
-colors = np.array([blue_gray_red(t) for t in normed_scale], dtype=np.float32)
+colors = np.array([blue_gray_red(t) for t in n_a_d], dtype=np.float32)
 
 # 展开成三角形数据（position + normal + object_color）
 data = []
 for f in faces:
     n = get_normal(verts, *f)
-
     for idx in f:
         v = verts[idx]
         c = colors[idx]

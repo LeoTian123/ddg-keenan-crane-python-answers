@@ -4,7 +4,7 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
 
-verts, faces = resolve_input('input/bunny.obj')
+verts, faces = resolve_input('../input/bunny.obj')
 
 adj_mat = get_adj_mat(faces)
 

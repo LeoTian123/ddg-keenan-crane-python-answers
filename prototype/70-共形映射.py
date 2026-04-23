@@ -1,7 +1,7 @@
 from laplacian import *
 
 
-verts, faces = resolve_input('input/kitten.obj')
+verts, faces = resolve_input('../input/kitten.obj')
 adj_mat = get_adj_mat(faces)
 
 

@@ -1,37 +1,18 @@
-from curvature import *
 from OpenGL.GL import *
 from OpenGL.GLUT import *
 from OpenGL.GL.shaders import compileProgram, compileShader
 
-verts, faces = resolve_input('input/double-torus.obj')
+# ====== 读取模型 ======
+from basictools import *
+verts, faces = resolve_input('../input/bunny.obj')
 
-
-# 准备颜色
-angle_defects = get_angle_defects(verts, faces)
-scale = np.abs(angle_defects).max()
-n_a_d = angle_defects / scale
-def blue_gray_red(t):
-    if t < 0:
-        # 蓝 -> 灰
-        a = -t
-        # (a)(0,0,1) + (1-a)(0.5,0.5,0.5)
-        return (0.5-0.5*a, 0.5-0.5*a, 0.5+0.5*a)
-    else:
-        # 灰 -> 红
-        # (a)(1,0,0) + (1-a)(0.5,0.5,0.5)
-        a = t
-        return (0.5+0.5*a, 0.5-0.5*a, 0.5-0.5*a)
-
-colors = np.array([blue_gray_red(t) for t in n_a_d], dtype=np.float32)
-
-# 展开成三角形数据（position + normal + object_color）
+# ====== 法线 ======
+# 展开成三角形数据（position + normal）
 data = []
 for f in faces:
     n = get_normal(verts, *f)
-    for idx in f:
-        v = verts[idx]
-        c = colors[idx]
-        data.extend([*v, *n, *c])
+    for v in verts[f]:
+        data.extend([*v, *n])
 
 data = np.array(data, dtype=np.float32)
 
@@ -49,7 +30,6 @@ VERTEX_SHADER = """
 #version 330
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
-layout(location = 2) in vec3 object_color;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -57,12 +37,10 @@ uniform mat4 projection;
 
 out vec3 FragPos;
 out vec3 Normal;
-out vec3 ObjectColor;
 
 void main() {
     FragPos = vec3(model * vec4(position, 1.0));
     Normal = mat3(transpose(inverse(model))) * normal;
-    ObjectColor = object_color;
     gl_Position = projection * view * vec4(FragPos, 1.0);
 }
 """
@@ -71,17 +49,17 @@ FRAGMENT_SHADER = """
 #version 330
 in vec3 FragPos;
 in vec3 Normal;
-in vec3 ObjectColor;
 
 out vec4 color;
 
 uniform vec3 lightDir;
+uniform vec3 objectColor;
 
 void main() {
     vec3 norm = normalize(Normal);
     float diff = max(dot(norm, normalize(lightDir)), 0.0);
-    vec3 diffuse = diff * ObjectColor;
-    vec3 ambient = 0.2 * ObjectColor;
+    vec3 diffuse = diff * objectColor;
+    vec3 ambient = 0.2 * objectColor;
     color = vec4(diffuse + ambient, 1.0);
 }
 """
@@ -103,16 +81,12 @@ def init():
     glBufferData(GL_ARRAY_BUFFER, data.nbytes, data, GL_STATIC_DRAW)
 
     # position
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 36, ctypes.c_void_p(0))
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, ctypes.c_void_p(0))
     glEnableVertexAttribArray(0)
 
     # normal
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 36, ctypes.c_void_p(12))
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, ctypes.c_void_p(12))
     glEnableVertexAttribArray(1)
-
-    # object_color
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 36, ctypes.c_void_p(24))
-    glEnableVertexAttribArray(2)
 
     glEnable(GL_DEPTH_TEST)
 
@@ -186,6 +160,7 @@ def display():
 
     proj = perspective(45, 800 / 600, 0.1, 100)
 
+
     # 光方向（用右键控制）
     light_model = rotation_matrix(rot_x_light, rot_y_light)
     light_dir = light_model @ np.array([1,1,1,0], dtype=np.float32)
@@ -197,6 +172,8 @@ def display():
 
     glUniform3f(glGetUniformLocation(shader, "lightDir"),
                 light_dir[0], light_dir[1], light_dir[2])
+
+    glUniform3f(glGetUniformLocation(shader, "objectColor"), 0.7, 0.8, 1.0)
 
     glBindVertexArray(VAO)
     glDrawArrays(GL_TRIANGLES, 0, len(data)//6)

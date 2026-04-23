@@ -1,18 +1,75 @@
+from laplacian import *
+
+verts, faces = resolve_input('../input/kitten.obj')
+
+adj_mat = get_adj_mat(faces)
+
+laplacians = get_laplacians(verts, faces, adj_mat)
+
+scale = np.empty(len(verts), dtype=np.float32)
+
+
+# 1. 先计算面法线，再平均得到顶点法线
+def get_vertex_normals(verts, faces):
+    v_normals = np.zeros_like(verts)
+    for f in faces:
+        v0, v1, v2 = verts[f]
+        # 叉积得到面法线
+        face_normal = np.cross(v1 - v0, v2 - v0)
+        # 累加到三个顶点上（可以按面积加权，这里简化处理）
+        v_normals[f] += face_normal
+
+    # 归一化
+    norms = np.linalg.norm(v_normals, axis=1, keepdims=True)
+    return v_normals / (norms + 1e-9)
+
+
+vertex_normals = get_vertex_normals(verts, faces)
+
+# 2. 判断方向
+for p in range(len(verts)):
+    scale[p] = np.linalg.norm(laplacians[p])
+    # 如果拉普拉斯向量与法线方向相反（点积为负），则设为负值
+    if np.dot(laplacians[p], vertex_normals[p]) < 0:
+        scale[p] *= -1
+
+
+
+
+
+
 from OpenGL.GL import *
 from OpenGL.GLUT import *
 from OpenGL.GL.shaders import compileProgram, compileShader
 
-# ====== 读取模型 ======
-from basictools import *
-verts, faces = resolve_input('input/bunny.obj')
+# 准备颜色
+scale_abd_max = np.abs(scale).max()
+normed_scale = scale / scale_abd_max
+def blue_gray_red(t):
+    if t < 0:
+        # 蓝 -> 灰
+        a = -t
+        # a **= 0.5
+        # (a)(0,0,1) + (1-a)(0.5,0.5,0.5)
+        return (0.5-0.5*a, 0.5-0.5*a, 0.5+0.5*a)
+    else:
+        # 灰 -> 红
+        # (a)(1,0,0) + (1-a)(0.5,0.5,0.5)
+        a = t
+        # a **= 0.5
+        return (0.5+0.5*a, 0.5-0.5*a, 0.5-0.5*a)
 
-# ====== 法线 ======
-# 展开成三角形数据（position + normal）
+colors = np.array([blue_gray_red(t) for t in normed_scale], dtype=np.float32)
+
+# 展开成三角形数据（position + normal + object_color）
 data = []
 for f in faces:
     n = get_normal(verts, *f)
-    for v in verts[f]:
-        data.extend([*v, *n])
+
+    for idx in f:
+        v = verts[idx]
+        c = colors[idx]
+        data.extend([*v, *n, *c])
 
 data = np.array(data, dtype=np.float32)
 
@@ -30,6 +87,7 @@ VERTEX_SHADER = """
 #version 330
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
+layout(location = 2) in vec3 object_color;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -37,10 +95,12 @@ uniform mat4 projection;
 
 out vec3 FragPos;
 out vec3 Normal;
+out vec3 ObjectColor;
 
 void main() {
     FragPos = vec3(model * vec4(position, 1.0));
     Normal = mat3(transpose(inverse(model))) * normal;
+    ObjectColor = object_color;
     gl_Position = projection * view * vec4(FragPos, 1.0);
 }
 """
@@ -49,17 +109,17 @@ FRAGMENT_SHADER = """
 #version 330
 in vec3 FragPos;
 in vec3 Normal;
+in vec3 ObjectColor;
 
 out vec4 color;
 
 uniform vec3 lightDir;
-uniform vec3 objectColor;
 
 void main() {
     vec3 norm = normalize(Normal);
     float diff = max(dot(norm, normalize(lightDir)), 0.0);
-    vec3 diffuse = diff * objectColor;
-    vec3 ambient = 0.2 * objectColor;
+    vec3 diffuse = diff * ObjectColor;
+    vec3 ambient = 0.2 * ObjectColor;
     color = vec4(diffuse + ambient, 1.0);
 }
 """
@@ -81,12 +141,16 @@ def init():
     glBufferData(GL_ARRAY_BUFFER, data.nbytes, data, GL_STATIC_DRAW)
 
     # position
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, ctypes.c_void_p(0))
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 36, ctypes.c_void_p(0))
     glEnableVertexAttribArray(0)
 
     # normal
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, ctypes.c_void_p(12))
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 36, ctypes.c_void_p(12))
     glEnableVertexAttribArray(1)
+
+    # object_color
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 36, ctypes.c_void_p(24))
+    glEnableVertexAttribArray(2)
 
     glEnable(GL_DEPTH_TEST)
 
@@ -160,7 +224,6 @@ def display():
 
     proj = perspective(45, 800 / 600, 0.1, 100)
 
-
     # 光方向（用右键控制）
     light_model = rotation_matrix(rot_x_light, rot_y_light)
     light_dir = light_model @ np.array([1,1,1,0], dtype=np.float32)
@@ -172,8 +235,6 @@ def display():
 
     glUniform3f(glGetUniformLocation(shader, "lightDir"),
                 light_dir[0], light_dir[1], light_dir[2])
-
-    glUniform3f(glGetUniformLocation(shader, "objectColor"), 0.7, 0.8, 1.0)
 
     glBindVertexArray(VAO)
     glDrawArrays(GL_TRIANGLES, 0, len(data)//6)

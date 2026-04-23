@@ -1,7 +1,7 @@
 from operators import *
 import scipy.sparse.linalg as spla
 
-verts, faces = resolve_input('input/bunny.obj')
+verts, faces = resolve_input('../input/double-torus.obj')
 adj_mat = get_adj_mat(faces)
 
 edge_to_opposite = get_edge_to_opposite(faces)
