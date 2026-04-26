@@ -19,11 +19,15 @@ If you can read Chinese, [this article](https://zhuanlan.zhihu.com/p/20282073764
 
 * `01-gaussian-and-laplacian.py`: Computes and visualizes Gaussian curvature / angle defect, verifies the Gauss–Bonnet theorem; visualizes Laplace operators; compares forward/backward Euler smoothing and shows geometric changes before and after smoothing.
 
-* `02-conformal-mapping.py`: Performs conformal parameterization using eigenfunctions of the Laplacian matrix, maps closed surfaces to the plane, and visualizes the result with 2D scatter plots.
+* `02-conformal-mapping.py`: Performs a parameterization using eigenfunctions of the Laplacian matrix, mapping a closed surface to the plane and visualizing the result with a 2D scatter plot. Note that this is not a conformal mapping, but a simplified alternative.
 
 * `03-hodge-decomposition.py`: Performs Hodge decomposition on discrete 1-forms, verifying decomposition into gradient, curl, and harmonic components, and checks the properties of each component.
 
 * `04-vector-field-design.py`: Constructs generators of the $H_1$ homology group and harmonic bases of 1-forms, computes the holonomy of the Levi-Civita connection, designs vector fields with prescribed singularities, and generates tangent vector fields on faces.
+
+* `11-volume-preserving-smoothing.py`: Added in the first additional update. Performs iterative volume-preserving Laplacian smoothing on surfaces.
+
+* `12-conformal-mapping.py`: Added in the first additional update. Fully implemented by AI, this script performs a proper conformal mapping for closed surfaces. See the header comments in the file for details. Outputs are saved under `output_lscm/`.
 
 ## Usage
 
@@ -31,7 +35,7 @@ Run the example scripts directly to test the algorithms and visualization.
 
 The modules can also be imported as a toolkit for your own geometry processing projects.
 
-## About the `prototype` Folder
+## About the `prototype/` Folder
 
 This folder contains an outdated version of the code, using pyOpenGL for visualization. The code is relatively complex and poorly encapsulated, and is provided for reference only.
 
@@ -71,11 +75,15 @@ For the full DDG course and official materials, please visit:
 
 - ```01-gaussian-and-laplacian.py```: 计算并可视化高斯曲率/角亏，验证高斯–博内定理；可视化拉普拉斯算子；对比前向/后向欧拉平滑，展示平滑前后的几何变化。
 
-- ```02-conformal-mapping.py```: 通过拉普拉斯矩阵的特征函数进行共形参数化，将封闭曲面映射到平面，并用二维散点图展示。
+- ```02-a-simple-mapping.py```: 通过拉普拉斯矩阵的特征函数进行参数化，将封闭曲面映射到平面，并用二维散点图展示。请注意这不是一种共形映射，而是另一种简化的映射。
 
 - ```03-hodge-decomposition.py```: 对离散 1‑form 进行 Hodge 分解，验证分解为梯度部分、旋度部分和调和部分，并检查各分量的性质。
 
 - ```04-vector-field-design.py```: 构造曲面的 $H_1$ 同调群生成元与 1‑form 调和基底，计算 Levi‑Civita connection 的 holonomy，设计带指定奇点的向量场并在面上生成切向量场。
+
+- ```11-volume-preserving-smoothing.py```: 第一次额外更新加入。对曲面迭代执行保持的体积拉普拉斯平滑。
+
+- ```12-conformal-mapping.py```: 第一次额外更新加入。完全由AI实现，实现了正确的对于闭曲面的共形映射，详细情况见文件开篇的注释。其输出在```output_lscm/```下。
 
 ## 使用方法
 
@@ -83,7 +91,7 @@ For the full DDG course and official materials, please visit:
 
 可将模块作为工具包导入，用于你自己的几何处理项目。
 
-## 关于 prototype 文件夹
+## 关于 ``prototype/``` 文件夹
 
 里面是一套过时的老版本代码，使用 pyOpenGL 做可视化，较为繁复，且代码封装程度很低。仅作参考使用。
 

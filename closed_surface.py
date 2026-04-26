@@ -21,7 +21,6 @@ class ClosedSurface:
                     vert = list(map(float, line.split()[1:]))
                     verts.append(vert)
                 elif line[0] == 'f':
-
                     face = list(map(int, line.split()[1:]))
                     faces.append(face)
         self.verts = np.array(verts, dtype=np.float64)
@@ -58,6 +57,33 @@ class ClosedSurface:
         self._d_0 = None
         self._d_1 = None
 
+    @classmethod
+    def from_surface_with_new_verts(cls, surface, verts):
+        # Mainly used in processes about euler_smooth.
+        obj = cls.__new__(cls)
+
+        fields_set = {
+            'faces',
+            'V', '_E', 'F',
+
+            '_adj_mat', '_co_adj_mat',
+
+            '_edges', '_dual_edges',
+            '_edge_to_opposite',
+            '_edge_to_dual_edge', '_dual_edge_to_edge',
+            '_edge_to_index', '_dual_edge_to_index',
+            '_dual_edge_to_order',
+        }
+
+        for k, v in surface.__dict__.items():
+            if k in fields_set:
+                setattr(obj, k, deepcopy(v))
+            else:
+                setattr(obj, k, None)
+
+        obj.verts = verts.copy()
+
+        return obj
 
     def get_angle(self, p, a, b):
         p, a, b = self.verts[p], self.verts[a], self.verts[b]
@@ -77,6 +103,18 @@ class ClosedSurface:
         v0, v1, v2 = self.verts[v0], self.verts[v1], self.verts[v2]
         n = np.cross(v1 - v0, v2 - v0)
         return np.linalg.norm(n)
+
+    def get_volume(self):
+        res = 0
+        for i, j, k in self.faces:
+            res += np.dot(self.verts[i], np.cross(self.verts[j], self.verts[k]))
+        return res
+
+    def get_surface_area(self):
+        res = 0
+        for f in self.faces:
+            res += self.get_area(*f)
+        return res
 
     @property
     def adj_mat(self):
@@ -408,36 +446,6 @@ class ClosedSurface:
 
         return scale
 
-    @classmethod
-    def from_surface_with_new_verts(cls, surface, verts):
-        # Only used in processes about euler_smooth
-        obj = cls.__new__(cls)
-
-        obj.verts = verts.copy()
-        obj.faces = surface.faces
-
-        obj.V = len(obj.verts)
-        obj.F = surface.F
-        obj._E = surface._E
-
-        # related to faces / topology
-        obj._adj_mat = surface._adj_mat
-
-        obj._edges = surface._edges
-        obj._dual_edges = surface._dual_edges
-        obj._edge_to_opposite = surface._edge_to_opposite
-        obj._edge_to_dual_edge = surface._edge_to_dual_edge
-        obj._dual_edge_to_edge = surface._dual_edge_to_edge
-        obj._dual_edge_to_index = surface._dual_edge_to_index
-
-        # related to verts
-        obj._angle_defects = None
-        obj._euler_chi_by_angle_defects = None
-        obj._laplacians = None
-        obj._laplacian_matrix = None
-
-        return obj
-
     def forward_euler_smooth_stable(self, steps=50, lam=0.1):
         v = self.verts.copy()
         for _ in tqdm(range(steps), desc="Forward Euler Smooth Stable"):
@@ -464,6 +472,58 @@ class ClosedSurface:
         for _ in tqdm(range(steps), desc="Backward Euler Smooth"):
             for d in range(3):
                 v[:, d] = solver(v[:, d])
+        return v
+
+    def volume_preserving_smooth(self, steps=10, lam=0.1):
+        def get_one_step_shift(cs):
+            ui = cs.laplacians
+            gradient_volume = np.zeros_like(cs.verts)
+            for i, j, k in cs.faces:
+                gradient_volume[i] += np.cross(cs.verts[j], cs.verts[k])
+                gradient_volume[j] += np.cross(cs.verts[k], cs.verts[i])
+                gradient_volume[k] += np.cross(cs.verts[i], cs.verts[j])
+            gradient_volume /= 6
+
+            projection_magnitude = (
+                    np.sum(ui * gradient_volume) /
+                    np.sum(gradient_volume * gradient_volume)
+            )
+
+            return lam * (ui - projection_magnitude * gradient_volume)
+
+        v = self.verts.copy()
+        tmp = ClosedSurface.from_surface_with_new_verts(self, v)
+        volume0 = tmp.get_volume()
+        for _ in tqdm(range(steps), desc="volume_maintained_smooth"):
+            shift = get_one_step_shift(tmp)
+            v = v + shift
+
+            tmp = ClosedSurface.from_surface_with_new_verts(self, v)
+            volume = tmp.get_volume()
+
+            bary_center = np.mean(tmp.verts, axis=0)
+            v = bary_center + (volume0 / volume) ** (1 / 3) * (v - bary_center)
+
+            tmp = ClosedSurface.from_surface_with_new_verts(self, v)
+
+        return v
+
+    def volume_maintained_smooth_simple(self, steps=10, lam=0.1):
+        v = self.verts.copy()
+        tmp = ClosedSurface.from_surface_with_new_verts(self, v)
+        volume0 = tmp.get_volume()
+        for _ in tqdm(range(steps), desc="volume_maintained_smooth_simple"):
+            shift = lam * tmp.laplacians
+            v = v + shift
+
+            tmp = ClosedSurface.from_surface_with_new_verts(self, v)
+            volume = tmp.get_volume()
+
+            bary_center = np.mean(tmp.verts, axis=0)
+            v = bary_center + (volume0 / volume) ** (1 / 3) * (v - bary_center)
+
+            tmp = ClosedSurface.from_surface_with_new_verts(self, v)
+
         return v
 
     @property
@@ -671,12 +731,11 @@ class ClosedSurface:
             omega = np.zeros(self.E)
             for u, v in pairwise(generator):
                 # u, v：path order
-                order_by_indices = (min(u, v), max(u, v))  # to find corresponding edge
-                edge = self.dual_edge_to_edge[order_by_indices]
+                order_by_indices = (min(u, v), max(u, v))  # to find corresponding information
 
                 index_dual_edge = self.dual_edge_to_index[order_by_indices]
+                left_face, right_face = self.dual_edge_to_order[order_by_indices]
 
-                left_face, right_face = self.order_of_dual_edge(edge)
                 if left_face == u:
                     omega[index_dual_edge] = 1
                 else:
@@ -701,12 +760,10 @@ class ClosedSurface:
         res = 0
         for u, v in pairwise(dual_path):
             # u, v：path order
-            order_by_indices = (min(u, v), max(u, v))  # to find corresponding edge
-            edge = self.dual_edge_to_edge[order_by_indices]
+            order_by_indices = (min(u, v), max(u, v))  # to find corresponding information
 
             index_dual_edge = self.dual_edge_to_index[order_by_indices]
-
-            left_face, right_face = self.order_of_dual_edge(edge)
+            left_face, right_face = self.dual_edge_to_order[order_by_indices]
 
             if left_face == u:
                 sign = 1

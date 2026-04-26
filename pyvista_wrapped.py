@@ -55,6 +55,28 @@ def vista_verts_indices(verts, faces):
     plotter.show()
 
 
+def vista_verts_selected_indices(verts, faces, vert_indices):
+    face_array = np.hstack([[3, *f] for f in faces])
+    mesh = pv.PolyData(verts, face_array)
+
+    plotter = pv.Plotter()
+    plotter.add_mesh(
+        mesh,
+        color='lightgray',
+        opacity=1,
+        show_edges=True
+    )
+
+    plotter.add_point_labels(
+        verts[vert_indices],
+        [str(i) for i in vert_indices],
+        font_size=12,
+        point_size=5
+    )
+
+    plotter.show()
+
+
 def vista_colored_mesh(verts, faces, colors, show_edges=True, opacity=1.0):
     if colors.shape != (len(verts), 3):
         raise ValueError(
@@ -76,6 +98,7 @@ def vista_colored_mesh(verts, faces, colors, show_edges=True, opacity=1.0):
         specular=0.2
     )
     plotter.show()
+
 
 def plot_cycles(verts, faces, cycles):
 
@@ -396,7 +419,28 @@ def pyvista_vectors_on_faces(
 
 
 if __name__ == '__main__':
-    from basictools import *
-    verts, faces = resolve_input('input/sphere.obj')
-    # vista_pure_mesh(verts, faces)
-    vista_verts_indices(verts, faces)
+    from closed_surface import *
+    cs = ClosedSurface('input/kitten.obj')
+    # vista_pure_mesh(cs.verts, cs.faces)
+    # vista_verts_indices(cs.verts, cs.faces)
+    # vista_verts_selected_indices(cs.verts, cs.faces, [4201, 9320, 6802, 2233, 1825, 2760, 4138])
+
+    palette = np.array([
+        [1, 0, 0],     # red
+        [0, 1, 0],     # green
+        [0, 0, 1],     # blue
+        [1, 1, 0],     # yellow
+        [1, 0, 1],     # purple
+        [0, 1, 1],     # cyan
+        [1, 0.5, 0],   # orange
+        [0.5, 0.5, 0.5] # gray
+    ])
+
+    x_sign = (cs.verts[:, 0] >= 0).astype(int)
+    y_sign = (cs.verts[:, 1] >= 0).astype(int)
+    z_sign = (cs.verts[:, 2] >= 0).astype(int)
+
+    quad_idx = x_sign * 4 + y_sign * 2 + z_sign
+
+    colors = palette[quad_idx]
+    vista_colored_mesh(cs.verts, cs.faces, colors, show_edges=False, opacity=1.0)
